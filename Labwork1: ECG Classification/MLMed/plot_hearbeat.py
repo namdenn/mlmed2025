@@ -1,15 +1,9 @@
 import numpy as np
 import pandas as pd
 import wfdb
-import os
 from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 from pyts.image import GramianAngularField
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from sklearn.metrics import confusion_matrix, classification_report
 import seaborn as sns
 
 record = wfdb.rdrecord("mit-bih-arrhythmia-database-1.0.0/233")  
@@ -42,12 +36,23 @@ def extract_heartbeats(signal, annotations, window_size=324):
 
 heartbeats, labels = extract_heartbeats(filtered_signal, annotation)
 
+# annotate
+filtered_indices = [i for i, label in enumerate(labels) if label not in ['+', '|']]
+heartbeats = heartbeats[filtered_indices]
+labels = labels[filtered_indices]
+
+label_map = {'A':0, 'F':1, 'N':2, 'V':3}  
+
+inv_label_map = {v: k for k, v in label_map.items()}
+numeric_labels = np.array([label_map[label] for label in labels])
+
+
 # # Convert ECG signals to GAF images
 gaf = GramianAngularField(image_size=64)
 ecg_images = gaf.fit_transform(heartbeats) 
 
 
-selected_rows = [1, 1253, 1269, 310, 10, 4]  # Indices of rows you want to plot
+selected_rows = [2,3,36,310]  # Indices of rows you want to plot
 fig, axes = plt.subplots(1, len(selected_rows), figsize=(15, 5))
 
 for idx, row in enumerate(selected_rows):

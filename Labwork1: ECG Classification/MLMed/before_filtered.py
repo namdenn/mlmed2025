@@ -26,6 +26,16 @@ def extract_heartbeats(signal, annotations, window_size=324):
 
 heartbeats, labels = extract_heartbeats(filtered_signal, annotation)
 
+# annotate 
+filtered_indices = [i for i, label in enumerate(labels) if label not in ['+', '|']]
+heartbeats = heartbeats[filtered_indices]
+labels = labels[filtered_indices]
+
+label_map = {'A':0, 'F':1, 'N':2, 'V':3}  
+
+inv_label_map = {v: k for k, v in label_map.items()}
+numeric_labels = np.array([label_map[label] for label in labels])
+
 df = pd.DataFrame(heartbeats)
 df["Label"] = labels  
 
