@@ -12,8 +12,8 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import confusion_matrix, classification_report
 import seaborn as sns
 
-record = wfdb.rdrecord("mit-bih-arrhythmia-database-1.0.0/219")  
-annotation = wfdb.rdann("mit-bih-arrhythmia-database-1.0.0/219", "atr")
+record = wfdb.rdrecord("mit-bih-arrhythmia-database-1.0.0/233")  
+annotation = wfdb.rdann("mit-bih-arrhythmia-database-1.0.0/233", "atr")
 
 def bandpass_filter(signal, lowcut=0.5, highcut=50, fs=360, order=3):
     nyquist = 0.5 * fs
