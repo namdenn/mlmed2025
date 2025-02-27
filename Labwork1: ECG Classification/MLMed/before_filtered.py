@@ -4,40 +4,17 @@ import pandas as pd
 import matplotlib as plt
 import matplotlib.pyplot as pplt
 
-record = wfdb.rdrecord("mit-bih-arrhythmia-database-1.0.0/233")
-annotation = wfdb.rdann("mit-bih-arrhythmia-database-1.0.0/233", "atr")
+train_data = np.loadtxt("mitbih_train.csv", delimiter=",")
+test_data = np.loadtxt("mitbih_test.csv", delimiter=",")
 
-filtered_signal = record.p_signal[:, 0]
+X_train, y_train = train_data[:, :-1], train_data[:, -1].astype(int)
+X_test, y_test = test_data[:, :-1], test_data[:, -1].astype(int)
 
-def extract_heartbeats(signal, annotations, window_size=324):
-    beats = []
-    labels = []
-    
-    for i, r_peak in enumerate(annotations.sample):
-        start = max(0, r_peak - 144)
-        end = min(len(signal), r_peak + 180)
-        heartbeat = signal[start:end]
-        
-        if len(heartbeat) == window_size:
-            beats.append(heartbeat)
-            labels.append(annotations.symbol[i])  
-            
-    return np.array(beats), np.array(labels)
-
-heartbeats, labels = extract_heartbeats(filtered_signal, annotation)
-
-# annotate 
-filtered_indices = [i for i, label in enumerate(labels) if label not in ['+', '|']]
-heartbeats = heartbeats[filtered_indices]
-labels = labels[filtered_indices]
-
-label_map = {'A':0, 'F':1, 'N':2, 'V':3}  
-
+label_map = {0: "N", 1: "S", 2: "V", 3: "F", 4: "Q"}
 inv_label_map = {v: k for k, v in label_map.items()}
-numeric_labels = np.array([label_map[label] for label in labels])
 
-df = pd.DataFrame(heartbeats)
-df["Label"] = labels  
+df = pd.DataFrame()
+df["Label"] = y_train
 
 df.to_csv("before_filtered_heartbeats.csv", index=False)
 
@@ -47,7 +24,7 @@ num_plots = 1
 pplt.figure(figsize=(10, 6))
 
 for i in range(num_plots):
-    pplt.plot(heartbeats[i], label=f"Heartbeat {i+1} - Label: {labels[i]}", color = "red")
+    pplt.plot(X_train[i][:100], label=f"Heartbeat {i+1} - Label: {y_train[i]}", color = "red")
 
 pplt.xlabel("Time (samples)")
 pplt.ylabel("Amplitude")

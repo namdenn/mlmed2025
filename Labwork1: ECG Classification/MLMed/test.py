@@ -1,66 +1,49 @@
 import numpy as np
 import pandas as pd
-import wfdb
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
-from scipy.signal import butter, filtfilt
-from imblearn.over_sampling import RandomOverSampler
 from pyts.image import GramianAngularField
-from torch.utils.data import Dataset, DataLoader, random_split, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import confusion_matrix, classification_report
+from imblearn.over_sampling import RandomOverSampler
+from scipy.signal import butter, filtfilt
 
-record = wfdb.rdrecord("mit-bih-arrhythmia-database-1.0.0/233")
-annotation = wfdb.rdann("mit-bih-arrhythmia-database-1.0.0/233", "atr")
-
-# this filter used for remove noise
-def bandpass_filter(signal, lowcut=0.5, highcut=50, fs=360, order=3):
+def low_pass_filter(signal, cutoff=50, fs=360, order=5):
     nyquist = 0.5 * fs
-    b, a = butter(order, [lowcut / nyquist, highcut / nyquist], btype="band")
+    normal_cutoff = cutoff / nyquist
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
     return filtfilt(b, a, signal)
-filtered_signal = bandpass_filter(record.p_signal[:, 0])
 
-# extract heartbeats
-def extract_heartbeats(signal, annotations, window_size=324):
-    beats, labels = [], []
-    for i, r_peak in enumerate(annotations.sample):
-        start, end = max(0, r_peak - 144), min(len(signal), r_peak + 180)
-        heartbeat = signal[start:end]
-        if len(heartbeat) == window_size:
-            beats.append(heartbeat)
-            labels.append(annotations.symbol[i])
-    return np.array(beats), np.array(labels)
-heartbeats, labels = extract_heartbeats(filtered_signal, annotation)
-# print(np.unique(labels))
+train_data = np.loadtxt("mitbih_train.csv", delimiter=",")
+test_data = np.loadtxt("mitbih_test.csv", delimiter=",")
 
-filtered_indices = [i for i, label in enumerate(labels) if label not in ['+', '|']]
-heartbeats = heartbeats[filtered_indices]
-labels = labels[filtered_indices]
+X_train, y_train = train_data[:, :-1], train_data[:, -1].astype(int)
+X_test, y_test = test_data[:, :-1], test_data[:, -1].astype(int)
 
-# Annotate label
-label_map = {'A':0, 'F':1, 'N':2, 'V':3}  
+X_train_filtered = np.array([low_pass_filter(sig) for sig in X_train])
+X_test_filtered = np.array([low_pass_filter(sig) for sig in X_test])
 
+label_map = {0: "N", 1: "S", 2: "V", 3: "F", 4: "Q"}
 inv_label_map = {v: k for k, v in label_map.items()}
-numeric_labels = np.array([label_map[label] for label in labels])
 
-# resample the dataset
 ros = RandomOverSampler(random_state=42)
-heartbeats_resampled, labels_resampled = ros.fit_resample(heartbeats, numeric_labels)
-labels_resampled = np.array([inv_label_map[label] for label in labels_resampled])
+X_train_resampled, y_train_resampled = ros.fit_resample(X_train_filtered, y_train)
 
-# convert ecg to gaf image
 gaf = GramianAngularField(image_size=64)
-ecg_images = gaf.fit_transform(heartbeats_resampled)
-ecg_images_tensor = torch.tensor(ecg_images, dtype=torch.float32).unsqueeze(1)
-labels_tensor = torch.tensor([label_map[label] for label in labels_resampled], dtype=torch.long)
+X_train_gaf = gaf.fit_transform(X_train_resampled)
+X_test_gaf = gaf.fit_transform(X_test_filtered)
 
-X_train, X_test, y_train, y_test = train_test_split(ecg_images_tensor, labels_tensor, test_size=0.2, random_state=0)
+X_train_tensor = torch.tensor(X_train_gaf, dtype=torch.float32).unsqueeze(1)
+X_test_tensor = torch.tensor(X_test_gaf, dtype=torch.float32).unsqueeze(1)
+y_train_tensor = torch.tensor(y_train_resampled, dtype=torch.long)
+y_test_tensor = torch.tensor(y_test, dtype=torch.long)
 
-train_dataset = TensorDataset(X_train, y_train)
-test_dataset = TensorDataset(X_test, y_test)
+train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
 
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
@@ -68,11 +51,11 @@ test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size = 3, padding = 1)
-        self.conv2 = nn.Conv2d(32,64, kernel_size = 3, padding = 1)
-        self.pool = nn.MaxPool2d(2,2)
-        self.fc1 = nn.Linear(64*16*16, 128)
-        self.fc2 = nn.Linear(128, 4)  
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.fc1 = nn.Linear(64 * 16 * 16, 128)
+        self.fc2 = nn.Linear(128, 5)  
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -89,7 +72,7 @@ model = CNN().to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.01)
 
-for epoch in range(5): 
+for epoch in range(10):  
     model.train()
     total_loss = 0
     for images, labels in train_loader:
@@ -105,26 +88,24 @@ for epoch in range(5):
     print(f"Epoch [{epoch+1}/10], Loss: {total_loss/len(train_loader):.4f}")
 
 model.eval()
-
 all_preds = []
 all_labels = []
 
 with torch.no_grad():
     for images, labels in test_loader:
         images, labels = images.to(device), labels.to(device)
-        
         outputs = model(images)
-        _, preds = torch.max(outputs, 1)  
-        
-        all_preds.extend(preds.cpu().numpy())  
+        _, preds = torch.max(outputs, 1)
+
+        all_preds.extend(preds.cpu().numpy())
         all_labels.extend(labels.cpu().numpy())
 
 cm = confusion_matrix(all_labels, all_preds)
 
 print("Classification Report:\n", classification_report(all_labels, all_preds))
 
-plt.figure(figsize=(6,6))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=label_map.keys(), yticklabels=label_map.keys())
+plt.figure(figsize=(6, 6))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=label_map.values(), yticklabels=label_map.values())
 plt.xlabel("Predicted Label")
 plt.ylabel("True Label")
 plt.title("Confusion Matrix")

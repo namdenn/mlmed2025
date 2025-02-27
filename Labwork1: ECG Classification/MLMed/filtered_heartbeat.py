@@ -1,64 +1,44 @@
+import wfdb
 import numpy as np
 import pandas as pd
-import wfdb
+import matplotlib as plt
+import matplotlib.pyplot as pplt
 from scipy.signal import butter, filtfilt
-import matplotlib.pyplot as plt
-from pyts.image import GramianAngularField
 
-record = wfdb.rdrecord("mit-bih-arrhythmia-database-1.0.0/233")  
-annotation = wfdb.rdann("mit-bih-arrhythmia-database-1.0.0/233", "atr")
-
-def bandpass_filter(signal, lowcut=0.5, highcut=50, fs=360, order=3):
+def low_pass_filter(signal, cutoff=50, fs=360, order=5):
     nyquist = 0.5 * fs
-    low = lowcut / nyquist
-    high = highcut / nyquist
-    b, a = butter(order, [low, high], btype="band")
+    normal_cutoff = cutoff / nyquist
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
     return filtfilt(b, a, signal)
 
-filtered_signal = bandpass_filter(record.p_signal[:, 0])  
+train_data = np.loadtxt("mitbih_train.csv", delimiter=",")
+test_data = np.loadtxt("mitbih_test.csv", delimiter=",")
 
-def extract_heartbeats(signal, annotations, window_size=324):
-    beats = []
-    labels = []
-    
-    for i, r_peak in enumerate(annotations.sample):
-        start = max(0, r_peak - 144)
-        end = min(len(signal), r_peak + 180)
-        heartbeat = signal[start:end]
-        
-        if len(heartbeat) == window_size:
-            beats.append(heartbeat)
-            labels.append(annotations.symbol[i]) 
-            
-    return np.array(beats), np.array(labels)
+X_train, y_train = train_data[:, :-1], train_data[:, -1].astype(int)
+X_test, y_test = test_data[:, :-1], test_data[:, -1].astype(int)
 
-heartbeats, labels = extract_heartbeats(filtered_signal, annotation)
-print(np.unique(labels))
+X_train_filtered = np.array([low_pass_filter(sig) for sig in X_train])
+X_test_filtered = np.array([low_pass_filter(sig) for sig in X_test])
 
-# annotate 
-filtered_indices = [i for i, label in enumerate(labels) if label not in ['+', '|']]
-heartbeats = heartbeats[filtered_indices]
-labels = labels[filtered_indices]
-
-label_map = {'A':0, 'F':1, 'N':2, 'V':3}  
-
+label_map = {0: "N", 1: "S", 2: "V", 3: "F", 4: "Q"}
 inv_label_map = {v: k for k, v in label_map.items()}
-numeric_labels = np.array([label_map[label] for label in labels])
 
-df = pd.DataFrame(heartbeats)
-df["Label"] = labels
-df.to_csv("filtered_heartbeats.csv", index=False)
+df = pd.DataFrame()
+df["Label"] = y_train
 
-num_plots = 1 # Plot up to 5 heartbeats
+df.to_csv("before_filtered_heartbeats.csv", index=False)
 
-plt.figure(figsize=(10, 6))
+print(f"Total filtered heartbeats: {len(df)}")
+
+num_plots = 1
+pplt.figure(figsize=(10, 6))
 
 for i in range(num_plots):
-    plt.plot(heartbeats[i], label=f"Heartbeat {i+1} - Label: {labels[i]}")
+    pplt.plot(X_train_filtered[i][:100], label=f"Heartbeat {i+1} - Label: {y_train[i]}", color = "red")
 
-plt.xlabel("Time (samples)")
-plt.ylabel("Amplitude")
-plt.title("Extracted Heartbeats from ECG Signal")
-plt.legend()
-plt.grid()
-plt.show()
+pplt.xlabel("Time (samples)")
+pplt.ylabel("Amplitude")
+pplt.title("Extracted Heartbeats from ECG Signal")
+pplt.legend()
+pplt.grid()
+pplt.show()

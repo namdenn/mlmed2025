@@ -7,8 +7,8 @@ from scipy.signal import butter, filtfilt
 from imblearn.over_sampling import RandomOverSampler
 from collections import Counter
 
-record = wfdb.rdrecord("mit-bih-arrhythmia-database-1.0.0/100")
-annotation = wfdb.rdann("mit-bih-arrhythmia-database-1.0.0/100", "atr")
+record = wfdb.rdrecord("mit-bih-arrhythmia-database-1.0.0/233")
+annotation = wfdb.rdann("mit-bih-arrhythmia-database-1.0.0/233", "atr")
 
 def bandpass_filter(signal, lowcut=0.5, highcut=50, fs=360, order=3):
     nyquist = 0.5 * fs
@@ -28,10 +28,15 @@ def extract_heartbeats(signal, annotations, window_size=324):
     return np.array(beats), np.array(labels)
 
 heartbeats, labels = extract_heartbeats(filtered_signal, annotation)
-print("Unique Labels:", np.unique(labels))
 
-label_map = {'A': 0, 'N': 1, 'V': 2}
+filtered_indices = [i for i, label in enumerate(labels) if label not in ['+', '|']]
+heartbeats = heartbeats[filtered_indices]
+labels = labels[filtered_indices]
+
+label_map = {'A':0, 'F':1, 'N':2, 'V':3}  
+
 inv_label_map = {v: k for k, v in label_map.items()}
+numeric_labels = np.array([label_map[label] for label in labels])
 
 def plot_label_distribution(labels, title):
     unique_labels, counts = np.unique(labels, return_counts=True)
