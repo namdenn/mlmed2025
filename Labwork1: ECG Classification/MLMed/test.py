@@ -18,8 +18,8 @@ def low_pass_filter(signal, cutoff=50, fs=360, order=5):
     b, a = butter(order, normal_cutoff, btype='low', analog=False)
     return filtfilt(b, a, signal)
 
-train_data = np.loadtxt("mitbih_train.csv", delimiter=",")
-test_data = np.loadtxt("mitbih_test.csv", delimiter=",")
+train_data = np.loadtxt("/kaggle/input/heartbeat/mitbih_test.csv", delimiter=",")
+test_data = np.loadtxt("/kaggle/input/heartbeat/mitbih_test.csv", delimiter=",")
 
 X_train, y_train = train_data[:, :-1], train_data[:, -1].astype(int)
 X_test, y_test = test_data[:, :-1], test_data[:, -1].astype(int)
@@ -32,15 +32,16 @@ inv_label_map = {v: k for k, v in label_map.items()}
 
 ros = RandomOverSampler(random_state=42)
 X_train_resampled, y_train_resampled = ros.fit_resample(X_train_filtered, y_train)
+X_test_resampled, y_test_resampled = ros.fit_resample(X_test_filtered, y_test)
 
 gaf = GramianAngularField(image_size=64)
 X_train_gaf = gaf.fit_transform(X_train_resampled)
-X_test_gaf = gaf.fit_transform(X_test_filtered)
+X_test_gaf = gaf.fit_transform(X_test_resampled)
 
 X_train_tensor = torch.tensor(X_train_gaf, dtype=torch.float32).unsqueeze(1)
 X_test_tensor = torch.tensor(X_test_gaf, dtype=torch.float32).unsqueeze(1)
-y_train_tensor = torch.tensor(y_train_resampled, dtype=torch.long)
-y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+y_train_tensor = torch.tensor(y_test_resampled, dtype=torch.long)
+y_test_tensor = torch.tensor(y_test_resampled, dtype=torch.long)
 
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
 test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
@@ -70,9 +71,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = CNN().to(device)
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.01)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-for epoch in range(10):  
+for epoch in range(50):  
     model.train()
     total_loss = 0
     for images, labels in train_loader:
@@ -85,7 +86,7 @@ for epoch in range(10):
         optimizer.step()
 
         total_loss += loss.item()
-    print(f"Epoch [{epoch+1}/10], Loss: {total_loss/len(train_loader):.4f}")
+    print(f"Epoch [{epoch+1}/100], Loss: {total_loss/len(train_loader):.4f}")
 
 model.eval()
 all_preds = []
